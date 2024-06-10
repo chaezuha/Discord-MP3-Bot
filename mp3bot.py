@@ -2,7 +2,7 @@ import discord
 import os
 import glob
 from discord import app_commands
-from config import TOKEN, guildId, opusLoc, filePath
+from config import TOKEN, opusLoc, filePath
 from collections import deque
 
 def mp3Files(directory = filePath):
@@ -44,17 +44,16 @@ def play_next(interaction):
 
 @client.event
 async def on_ready():
-    await tree.sync(guild=discord.Object(id=guildId))
+    await tree.sync()
     print(f'Bot is starting. Logged in as {client.user}')
 
 @tree.command(
     name="play",
-    description="Plays an mp3 file",
-    guild=discord.Object(id=guildId)
+    description="Plays an mp3 file"
 )
 async def play_command(interaction, title: str):
     global song_queue
-    print (f'Running play command')
+    print(f'Running play command')
 
     if interaction.user.voice is None:
         await interaction.response.send_message("You need to be in a voice channel to use this command.")
@@ -93,8 +92,7 @@ async def play_command(interaction, title: str):
 
 @tree.command(
     name="queue",
-    description="Shows the current song queue",
-    guild=discord.Object(id=guildId)
+    description="Shows the current song queue"
 )
 async def queue_command(interaction):
     print(f'Running queue command')
@@ -106,8 +104,7 @@ async def queue_command(interaction):
 
 @tree.command(
     name="skip",
-    description="Skips the current song",
-    guild=discord.Object(id=guildId)
+    description="Skips the current song"
 )
 async def skip_command(interaction):
     global voice_client
@@ -126,8 +123,7 @@ async def skip_command(interaction):
 
 @tree.command(
     name="pause",
-    description="Pauses the current song",
-    guild=discord.Object(id=guildId)
+    description="Pauses the current song"
 )
 async def pause_command(interaction):
     global voice_client
@@ -141,8 +137,7 @@ async def pause_command(interaction):
 
 @tree.command(
     name="resume",
-    description="Resumes the paused song",
-    guild=discord.Object(id=guildId)
+    description="Resumes the paused song"
 )
 async def resume_command(interaction):
     global voice_client
@@ -156,12 +151,11 @@ async def resume_command(interaction):
 
 @tree.command(
     name="stop",
-    description="Stops the bot and makes it leave the voice channel",
-    guild=discord.Object(id=guildId)
+    description="Stops the bot and makes it leave the voice channel"
 )
 async def stop_command(interaction):
     global voice_client
-    print(f'Running stop command')
+    print('Running stop command')
 
     if voice_client:
         await voice_client.disconnect()
@@ -173,11 +167,10 @@ async def stop_command(interaction):
 
 @tree.command(
     name="list",
-    description="Lists avaliable songs",
-    guild=discord.Object(id=guildId)
+    description="Lists available songs"
 )
 async def list_command(interaction):
-    print(f'Running list command')
+    print('Running list command')
     mp3_files = mp3Files()
     if mp3_files:
         file_names = [os.path.splitext(os.path.basename(file))[0] for file in mp3_files]
@@ -185,6 +178,5 @@ async def list_command(interaction):
         await interaction.response.send_message('\n'.join(numbered_files))
     else:
         await interaction.response.send_message('No mp3 files found')
-
 
 client.run(TOKEN)
