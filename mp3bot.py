@@ -126,30 +126,50 @@ async def skip_command(interaction):
 
 @tree.command(
     name="pause",
-    description="Pauses the song!",
+    description="Pauses the current song",
     guild=discord.Object(id=guildId)
 )
 async def pause_command(interaction):
+    global voice_client
     print(f'Running pause command')
-    await interaction.response.send_message("pause test")
+
+    if voice_client and voice_client.is_playing():
+        voice_client.pause()
+        await interaction.response.send_message("Paused the current song.")
+    else:
+        await interaction.response.send_message("No song is currently playing.")
 
 @tree.command(
     name="resume",
-    description="Resumes the song",
+    description="Resumes the paused song",
     guild=discord.Object(id=guildId)
 )
 async def resume_command(interaction):
+    global voice_client
     print(f'Running resume command')
-    await interaction.response.send_message("resume test")
+
+    if voice_client and voice_client.is_paused():
+        voice_client.resume()
+        await interaction.response.send_message("Resumed the current song.")
+    else:
+        await interaction.response.send_message("No song is currently paused.")
 
 @tree.command(
     name="stop",
-    description="Stops the bot and makes it leave",
+    description="Stops the bot and makes it leave the voice channel",
     guild=discord.Object(id=guildId)
 )
 async def stop_command(interaction):
+    global voice_client
     print(f'Running stop command')
-    await interaction.response.send_message("stop test!")
+
+    if voice_client:
+        await voice_client.disconnect()
+        voice_client = None
+        song_queue.clear()
+        await interaction.response.send_message("Stopped the bot and left the voice channel.")
+    else:
+        await interaction.response.send_message("The bot is not connected to a voice channel.")
 
 @tree.command(
     name="list",
