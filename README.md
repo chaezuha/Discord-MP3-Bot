@@ -1,70 +1,71 @@
+# Discord MP3 Bot
 
-# Discord-MP3-Bot
+A Discord slash-command music bot that plays local `.mp3` files.
 
-A Discord bot for playing MP3 files. This effectively works like a discord music bot, but it streams your own mp3 files instead of music found online.
- It offers basic functionality to manage and play songs in a voice channel.
-
-This was mainly made for personal use for my needs so it may not work as expected for you.
+This version includes:
+- Fuzzy song search with ranking
+- Slash command autocomplete for `/play`
+- Better queue/playback handling
+- Environment-variable configuration (with backward-compatible `config.py` aliases)
 
 ## Requirements
 
-- `discord.py` library
-- Opus library installed
+- Python `3.10+`
+- `ffmpeg` installed and available in your PATH
+- `discord.py` with voice support
+- Optional: explicit Opus path (if your system does not auto-detect it)
 
+## Install
 
-## Installation 
-1. Install all required libraries
-2. Clone the repo somewhere on your computer
-3. Substitute your own values in "config.py"
-4. Run mp3bot.py
+1. Install dependencies:
+```bash
+pip install -U "discord.py[voice]"
+```
+2. Clone this repository.
+3. Set environment variables:
+```bash
+export DISCORD_TOKEN="your_bot_token"
+export DISCORD_GUILD_ID="your_guild_id"      # optional, but recommended for fast slash sync
+export DISCORD_MUSIC_PATH="/absolute/path/to/your/mp3/folder"
+export DISCORD_OPUS_PATH="/absolute/path/to/libopus"  # optional
+```
+4. Run:
+```bash
+python mp3bot.py
+```
 
-## Bot Commands
+## Commands
 
-### /play
-Plays an MP3 file by its title.
-- **Usage:** `/play <title>`
-- **Example:** `/play songname`
+- `/play <query>`: Finds the best match and plays/queues it.
+- `/search <query>`: Shows top fuzzy matches with confidence scores.
+- `/queue`: Shows current song + queued songs.
+- `/skip`: Skips current song.
+- `/pause`: Pauses playback.
+- `/resume`: Resumes playback.
+- `/stop`: Clears queue and disconnects.
+- `/list [query]`: Lists songs, optionally filtered by query.
 
-### /queue
-Shows the current song queue.
-- **Usage:** `/queue`
+## Search behavior
 
-### /skip
-Skips the current song.
-- **Usage:** `/skip`
+- Exact title matches rank highest.
+- Prefix and substring matches are prioritized.
+- Token overlap + fuzzy similarity help rank partial/misspelled queries.
+- If matches are too close, `/play` asks for a more specific query.
 
-### /pause
-Pauses the current song.
-- **Usage:** `/pause`
-
-### /resume
-Resumes the paused song.
-- **Usage:** `/resume`
-
-### /stop
-Stops the bot and makes it leave the voice channel.
-- **Usage:** `/stop`
-
-### /list
-Lists available songs.
-- **Usage:** `/list`
-
-## Permissions List
+## Discord OAuth setup
 
 ### Scopes
-- bot
-- applications.commands
+- `bot`
+- `applications.commands`
 
-### Bot Permissions
-#### General Permissions
-- Read Messages/View Channels
-
-#### Text Permissions
-- Use Slash Commands
-
-#### Voice Permissions
+### Bot permissions
+- View Channels
+- Send Messages
+- Use Application Commands
 - Connect
 - Speak
-- Use Voice Activity
 
-Feel free to reach out if you encounter any issues or have suggestions for improvements. This was just a quick project for a need of mine so I don't really expect everything to be perfect.
+## Notes
+
+- Guild sync is used automatically when `DISCORD_GUILD_ID` is set (faster command updates).
+- Existing `config.py` placeholders still work as aliases, but env vars are preferred.
