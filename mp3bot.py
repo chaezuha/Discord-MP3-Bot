@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 from collections import deque
 from dataclasses import dataclass, field
@@ -31,8 +32,27 @@ class GuildPlayer:
     text_channel: discord.abc.Messageable | None = None
 
 
+log = logging.getLogger("mp3bot")
+
+
+class MP3Bot(commands.Bot):
+    async def setup_hook(self) -> None:
+        # Sync commands here rather than in on_ready: setup_hook runs exactly once,
+        # while on_ready fires again on every reconnect.
+        if DISCORD_GUILD_ID:
+            guild = discord.Object(id=DISCORD_GUILD_ID)
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+            log.info("Synced %d command(s) to guild %d.", len(synced), DISCORD_GUILD_ID)
+        else:
+            synced = await self.tree.sync()
+            log.info("Synced %d global command(s).", len(synced))
+
+
 intents = discord.Intents(guilds=True, voice_states=True)
-bot = commands.Bot(command_prefix="!", intents=intents)
+# Only slash commands are registered; when_mentioned avoids needing the
+# message-content intent that a text prefix would warn about.
+bot = MP3Bot(command_prefix=commands.when_mentioned, intents=intents)
 
 players: dict[int, GuildPlayer] = {}
 
@@ -41,12 +61,25 @@ def get_player(guild_id: int) -> GuildPlayer:
     return players.setdefault(guild_id, GuildPlayer())
 
 
+_catalog_cache: tuple[float, list[Song]] | None = None
+
+
 def get_catalog() -> list[Song]:
-    if not DISCORD_MUSIC_PATH.exists():
+    global _catalog_cache
+
+    if DISCORD_MUSIC_PATH is None or not DISCORD_MUSIC_PATH.is_dir():
         return []
 
+    # Cache on the folder's mtime so autocomplete doesn't re-scan the disk on
+    # every keystroke; adding/removing files bumps the mtime and refreshes it.
+    mtime = DISCORD_MUSIC_PATH.stat().st_mtime
+    if _catalog_cache is not None and _catalog_cache[0] == mtime:
+        return _catalog_cache[1]
+
     files = sorted(DISCORD_MUSIC_PATH.glob("*.mp3"), key=lambda item: item.name.lower())
-    return [Song(path=path, title=path.stem) for path in files]
+    catalog = [Song(path=path, title=path.stem) for path in files]
+    _catalog_cache = (mtime, catalog)
+    return catalog
 
 
 def score_song(song: Song, query: str) -> int:
@@ -104,10 +137,18 @@ async def ensure_voice(interaction: discord.Interaction, player: GuildPlayer) ->
 
     voice_channel = interaction.user.voice.channel
 
-    if player.voice_client is None or not player.voice_client.is_connected():
-        player.voice_client = await voice_channel.connect()
-    elif player.voice_client.channel != voice_channel:
-        await player.voice_client.move_to(voice_channel)
+    try:
+        if player.voice_client is None or not player.voice_client.is_connected():
+            player.voice_client = await voice_channel.connect(timeout=15)
+        elif player.voice_client.channel != voice_channel:
+            await player.voice_client.move_to(voice_channel)
+    except (asyncio.TimeoutError, discord.ClientException, discord.opus.OpusNotLoaded) as exc:
+        log.warning("Could not connect to voice channel %s: %s", voice_channel, exc)
+        await interaction.response.send_message(
+            "Could not connect to your voice channel. Please try again.",
+            ephemeral=True,
+        )
+        return None
 
     return player.voice_client
 
@@ -119,14 +160,19 @@ def start_playback(guild_id: int, song: Song) -> bool:
         player.current_song = None
         return False
 
+    try:
+        source = discord.FFmpegPCMAudio(str(song.path), before_options="-nostdin", options="-vn")
+    except discord.ClientException as exc:
+        # Most commonly: ffmpeg is not installed / not in PATH.
+        log.error("Could not create audio source for %s: %s", song.path, exc)
+        player.current_song = None
+        return False
+
     player.current_song = song
-    source = discord.FFmpegPCMAudio(str(song.path), before_options="-nostdin", options="-vn")
 
     def after_playback(error: Exception | None) -> None:
-        bot.loop.call_soon_threadsafe(
-            asyncio.create_task,
-            handle_song_end(guild_id, error),
-        )
+        # Runs in the audio thread; hand the coroutine back to the event loop.
+        asyncio.run_coroutine_threadsafe(handle_song_end(guild_id, error), bot.loop)
 
     voice_client.play(source, after=after_playback)
     return True
@@ -149,8 +195,10 @@ async def play_next_song(guild_id: int, *, announce: bool = False) -> None:
 async def handle_song_end(guild_id: int, error: Exception | None) -> None:
     player = get_player(guild_id)
 
-    if error and player.text_channel is not None:
-        await player.text_channel.send(f"Playback error: `{error}`")
+    if error:
+        log.error("Playback error in guild %d: %s", guild_id, error)
+        if player.text_channel is not None:
+            await player.text_channel.send(f"Playback error: `{error}`")
 
     player.current_song = None
     await play_next_song(guild_id, announce=True)
@@ -158,16 +206,19 @@ async def handle_song_end(guild_id: int, error: Exception | None) -> None:
 
 @bot.event
 async def on_ready() -> None:
-    if DISCORD_GUILD_ID:
-        guild = discord.Object(id=DISCORD_GUILD_ID)
-        bot.tree.copy_global_to(guild=guild)
-        synced = await bot.tree.sync(guild=guild)
-        print(f"Synced {len(synced)} command(s) to guild {DISCORD_GUILD_ID}.")
-    else:
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} global command(s).")
+    log.info("Bot is ready as %s", bot.user)
 
-    print(f"Bot is ready as {bot.user}")
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
+    command_name = interaction.command.name if interaction.command else "unknown"
+    log.error("Error in /%s command", command_name, exc_info=error)
+
+    message = "Something went wrong while running that command."
+    if interaction.response.is_done():
+        await interaction.followup.send(message, ephemeral=True)
+    else:
+        await interaction.response.send_message(message, ephemeral=True)
 
 
 @bot.tree.command(name="play", description="Play the best matching MP3 from your local library.")
@@ -318,9 +369,10 @@ async def stop_command(interaction: discord.Interaction) -> None:
         player.queue.clear()
         player.current_song = None
         await voice_client.disconnect()
-        player.voice_client = None
+        players.pop(interaction.guild.id, None)
         await interaction.response.send_message("Stopped playback and left the voice channel.")
     else:
+        players.pop(interaction.guild.id, None)
         await interaction.response.send_message("The bot is not connected to a voice channel.")
 
 
@@ -349,10 +401,22 @@ async def list_command(interaction: discord.Interaction, query: str | None = Non
     await interaction.response.send_message(message)
 
 
-if DISCORD_OPUS_PATH:
-    discord.opus.load_opus(DISCORD_OPUS_PATH)
+def main() -> None:
+    if not DISCORD_TOKEN:
+        raise SystemExit(
+            "DISCORD_TOKEN is not set. Copy .env.example to .env and fill in your bot token."
+        )
 
-if DISCORD_TOKEN == "Insert Token":
-    raise RuntimeError("Set DISCORD_TOKEN before starting the bot.")
+    if DISCORD_MUSIC_PATH is None:
+        log.warning("DISCORD_MUSIC_PATH is not set; the bot will not find any songs.")
+    elif not DISCORD_MUSIC_PATH.is_dir():
+        log.warning("Music folder %s does not exist; the bot will not find any songs.", DISCORD_MUSIC_PATH)
 
-bot.run(DISCORD_TOKEN)
+    if DISCORD_OPUS_PATH:
+        discord.opus.load_opus(DISCORD_OPUS_PATH)
+
+    bot.run(DISCORD_TOKEN, root_logger=True)
+
+
+if __name__ == "__main__":
+    main()

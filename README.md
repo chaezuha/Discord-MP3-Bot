@@ -6,29 +6,30 @@ This version includes:
 - Fuzzy song search with ranking
 - Slash command autocomplete for `/play`
 - Better queue/playback handling
-- Environment-variable configuration (with backward-compatible `config.py` aliases)
+- Configuration via a `.env` file (or plain environment variables)
 
 ## Requirements
 
 - Python `3.10+`
 - `ffmpeg` installed and available in your PATH
-- `discord.py` with voice support
 - Optional: explicit Opus path (if your system does not auto-detect it)
 
 ## Install
 
-1. Install dependencies:
+1. Clone this repository.
+2. Create a virtual environment and install dependencies:
 ```bash
-pip install -U "discord.py[voice]"
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
-2. Clone this repository.
-3. Set environment variables:
+3. Configure the bot:
 ```bash
-export DISCORD_TOKEN="your_bot_token"
-export DISCORD_GUILD_ID="your_guild_id"      # optional, but recommended for fast slash sync
-export DISCORD_MUSIC_PATH="/absolute/path/to/your/mp3/folder"
-export DISCORD_OPUS_PATH="/absolute/path/to/libopus"  # optional
+cp .env.example .env
+# then edit .env and fill in your values
 ```
+The `.env` file is git-ignored, so your token stays out of version control. Plain
+environment variables also work and take precedence over `.env` values.
 4. Run:
 ```bash
 python mp3bot.py
@@ -68,4 +69,4 @@ python mp3bot.py
 ## Notes
 
 - Guild sync is used automatically when `DISCORD_GUILD_ID` is set (faster command updates).
-- Existing `config.py` placeholders still work as aliases, but env vars are preferred.
+- Without `DISCORD_GUILD_ID`, commands sync globally and can take up to an hour to appear.
