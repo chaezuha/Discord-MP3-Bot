@@ -1,0 +1,13 @@
+services:
+  bot:
+    image: ghcr.io/chaezuha/discord-mp3-bot:latest
+    pull_policy: always # `docker compose up -d` refreshes the image
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # .env's DISCORD_MUSIC_PATH is the *host* folder (mounted below);
+      # inside the container the bot always reads from /music.
+      DISCORD_MUSIC_PATH: /music
+      DISCORD_OPUS_PATH: "" # the image auto-detects libopus
+    volumes:
+      - ${DISCORD_MUSIC_PATH:?Set DISCORD_MUSIC_PATH in .env to your MP3 folder}:/music:ro

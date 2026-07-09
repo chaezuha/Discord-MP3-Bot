@@ -247,8 +247,7 @@ async def play_command(interaction: discord.Interaction, query: str) -> None:
             f"{index + 1}. {song.title} ({score}%)" for index, (song, score) in enumerate(matches)
         )
         await interaction.response.send_message(
-            "Search is ambiguous. Try a more specific title.\n"
-            f"Top matches:\n{suggestions}",
+            f"Search is ambiguous. Try a more specific title.\nTop matches:\n{suggestions}",
             ephemeral=True,
         )
         return
@@ -403,9 +402,7 @@ async def list_command(interaction: discord.Interaction, query: str | None = Non
 
 def main() -> None:
     if not DISCORD_TOKEN:
-        raise SystemExit(
-            "DISCORD_TOKEN is not set. Copy .env.example to .env and fill in your bot token."
-        )
+        raise SystemExit("DISCORD_TOKEN is not set. Copy .env.example to .env and fill in your bot token.")
 
     if DISCORD_MUSIC_PATH is None:
         log.warning("DISCORD_MUSIC_PATH is not set; the bot will not find any songs.")
